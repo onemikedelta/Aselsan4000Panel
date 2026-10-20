@@ -17,13 +17,14 @@ uint32_t lastTick = 0;
 
 void redraw() {
   char text[9];
-  if (panel.key() >= 0)
-    snprintf(text, sizeof(text), "KEY %d", panel.key());
+  if (panel.key())
+    snprintf(text, sizeof(text), "TUS %c", panel.key());
   else
-    strcpy(text, "READY");
+    strcpy(text, "DÜNYA");
 
   panel.clear();
   panel.print(text);
+  panel.setCell(7, Aselsan4000Glyph::DataSent);
   panel.setClock(10, minutes);
   panel.setIcon(ICONS[minutes % 6], true);
   panel.show();
@@ -40,7 +41,9 @@ void loop() {
     panel.setLed(Aselsan4000Panel::LedTx, panel.ptt());
     panel.setLed(Aselsan4000Panel::LedRx, panel.monitor());
     Serial.print(F("key="));
-    Serial.print(panel.key());
+    Serial.print(panel.key() ? panel.key() : '-');
+    Serial.print(F(" index="));
+    Serial.print(panel.keyIndex());
     Serial.print(F(" ptt="));
     Serial.print(panel.ptt());
     Serial.print(F(" monitor="));

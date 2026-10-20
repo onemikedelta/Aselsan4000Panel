@@ -32,29 +32,36 @@ static const uint8_t CTRL_MONITOR = 0x80;
 static const uint8_t KEYPAD_ARM_ROWS = 0xF0;
 static const uint8_t KEYPAD_ARM_COLUMNS = 0x0F;
 
+// Key labels by row * 4 + column.
+static const char KEY_LABEL[16] PROGMEM = {
+    '1', '2', '3', Aselsan4000Panel::KeyMenu,
+    '4', '5', '6', Aselsan4000Panel::KeyEnter,
+    '7', '8', '9', Aselsan4000Panel::KeyScan,
+    '*', '0', '#', Aselsan4000Panel::KeyTone};
+
 // Clock digits are plain 7-segment.
 static const uint8_t SEG7[10] PROGMEM = {
     0xBE, 0xA0, 0x7C, 0xF8, 0xE2, 0xDA, 0xDE, 0xB0, 0xFE, 0xFA};
 
-// 14-segment patterns for ASCII 0x20..0x5A, high byte << 8 | low byte.
+// 14-segment patterns for ASCII 0x20..0x5F, high byte << 8 | low byte.
 // The radio itself also emits a short-middle-bar E (0x0748) and F (0x0648);
 // accept those too if you decode traffic coming from the radio.
 static const uint16_t FONT[] PROGMEM = {
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x2040, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x57AE, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x5000, 0x00A0, 0xF0F0, 0xA050, 0x0000, 0x2040, 0x0000, 0x4020,
     0x472E, 0x0006, 0x4348, 0x210E, 0x2446, 0x254A, 0x274A, 0x000E,
-    0x274E, 0x254E, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x274E, 0x254E, 0x0000, 0x0000, 0x0000, 0x2140, 0x0000, 0x0000,
     0x0000, 0x264E, 0xA11E, 0x0708, 0x811E, 0x2748, 0x2648, 0x270A,
     0x2646, 0x8118, 0x0306, 0x5640, 0x0700, 0x4686, 0x1686, 0x070E,
     0x264C, 0x170E, 0x364C, 0x218A, 0x8018, 0x0706, 0x4620, 0x1626,
-    0x50A0, 0x4090, 0x4128};
-static const char FONT_FIRST = ' ';
-static const char FONT_LAST = 'Z';
+    0x50A0, 0x4090, 0x4128, 0x0000, 0x1080, 0x0000, 0x0000, 0x0100};
+static const uint16_t FONT_FIRST = ' ';
+static const uint16_t FONT_LAST = '_';
 
 static const uint8_t ICON_BYTE[Aselsan4000Panel::IconCount] PROGMEM = {
     3, 4, 5, 7, 9, 11};
 static const uint8_t ICON_BIT[Aselsan4000Panel::IconCount] PROGMEM = {
-    0xFF, 0x08, 0x01, 0x01, 0x01, 0x01};
+    0x10, 0x08, 0x01, 0x01, 0x01, 0x01};
 
 static int8_t lowestBit(uint8_t mask) {
   for (int8_t i = 0; i < 4; i++)
@@ -69,6 +76,7 @@ Aselsan4000Panel::Aselsan4000Panel(uint8_t lcdAddress, uint8_t lcdSubAddress,
       _keypadAddress(keypadAddress),
       _controlAddress(controlAddress),
       _key(-1),
+      _keyLabel(0),
       _ptt(false),
       _monitor(false),
       _power(false),
@@ -122,10 +130,18 @@ void Aselsan4000Panel::setCell(uint8_t cell, uint16_t segments) {
 void Aselsan4000Panel::setChar(uint8_t cell, char c) { setCell(cell, glyph(c)); }
 
 void Aselsan4000Panel::print(const char *text) {
-  for (uint8_t cell = 0; cell < CHAR_CELLS; cell++) {
-    char c = *text ? *text++ : ' ';
-    setChar(cell, c);
+  const uint8_t *p = (const uint8_t *)text;
+  uint8_t cell = 0;
+  while (*p && cell < CHAR_CELLS) {
+    uint16_t cp = *p++;
+    if (cp >= 0xC0) {  // start of a UTF-8 sequence
+      uint8_t extra = (cp >= 0xE0) ? 2 : 1;
+      cp &= (extra == 2) ? 0x0F : 0x1F;
+      while (extra-- && (*p & 0xC0) == 0x80) cp = (cp << 6) | (*p++ & 0x3F);
+    }
+    setCell(cell++, glyphFor(cp));
   }
+  while (cell < CHAR_CELLS) setCell(cell++, 0);
 }
 
 void Aselsan4000Panel::setClock(uint8_t hour, uint8_t minute, bool colon) {
@@ -162,10 +178,33 @@ void Aselsan4000Panel::setSegment(uint8_t index, uint8_t bit, bool on) {
     _ram[index] &= ~(1 << bit);
 }
 
-uint16_t Aselsan4000Panel::glyph(char c) {
-  if (c >= 'a' && c <= 'z') c -= 32;
-  if (c < FONT_FIRST || c > FONT_LAST) return 0;
-  return pgm_read_word(&FONT[c - FONT_FIRST]);
+uint16_t Aselsan4000Panel::glyph(char c) { return glyphFor((uint8_t)c); }
+
+uint16_t Aselsan4000Panel::glyphFor(uint16_t codepoint) {
+  if (codepoint >= 'a' && codepoint <= 'z') codepoint -= 32;
+  if (codepoint >= FONT_FIRST && codepoint <= FONT_LAST)
+    return pgm_read_word(&FONT[codepoint - FONT_FIRST]);
+  switch (codepoint) {
+    case 0x00C7:
+    case 0x00E7:
+      return Aselsan4000Glyph::CCedilla;
+    case 0x011E:
+    case 0x011F:
+      return Aselsan4000Glyph::GBreve;
+    case 0x0130:
+    case 0x0131:
+      return Aselsan4000Glyph::IDotted;
+    case 0x00D6:
+    case 0x00F6:
+      return Aselsan4000Glyph::ODiaeresis;
+    case 0x015E:
+    case 0x015F:
+      return Aselsan4000Glyph::SCedilla;
+    case 0x00DC:
+    case 0x00FC:
+      return Aselsan4000Glyph::UDiaeresis;
+  }
+  return 0;
 }
 
 // --- keypad, inputs, LEDs ---
@@ -219,6 +258,7 @@ bool Aselsan4000Panel::poll() {
   bool changed = key != _key || ptt != _ptt || monitor != _monitor ||
                  power != _power;
   _key = key;
+  _keyLabel = (key < 0) ? 0 : (char)pgm_read_byte(&KEY_LABEL[key]);
   _ptt = ptt;
   _monitor = monitor;
   _power = power;

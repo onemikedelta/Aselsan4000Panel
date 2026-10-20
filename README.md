@@ -83,7 +83,7 @@ Display calls fill a buffer; `show()` pushes it to the panel in one I2C write.
 | `begin()` | start I2C, enable the display, arm the keypad |
 | `show()` | push the buffer to the panel |
 | `clear()` | blank the buffer (characters, clock and icons) |
-| `print(text)` | write up to 8 characters, padding the rest with spaces |
+| `print(text)` | write up to 8 characters (UTF-8), padding the rest with spaces |
 | `setChar(cell, c)` | one character, cell 0–7, left to right |
 | `setCell(cell, segments)` | raw 14-segment pattern, `high << 8 \| low` |
 | `setClock(hour, minute, colon = true)` | clock field; hour 0–19, minute 0–59 |
@@ -93,6 +93,7 @@ Display calls fill a buffer; `show()` pushes it to the panel in one I2C write.
 | `setSegment(index, bit, on)` | raw display-RAM bit |
 | `buffer()` | pointer to the 20-byte buffer |
 | `glyph(c)` | font pattern for a character, `0` if unsupported |
+| `glyphFor(codepoint)` | the same for a Unicode code point |
 
 Icons: `IconBattery`, `IconTone`, `IconCrypto`, `IconFault`, `IconHighPower`,
 `IconService`.
@@ -107,7 +108,8 @@ LED and backlight calls go out immediately; they are not buffered.
 | Call | Description |
 | ---- | ----------- |
 | `poll()` | read both expanders and re-arm them; true if anything changed |
-| `key()` | key held down as `row * 4 + column`, 0–15, or `-1` for none |
+| `key()` | label of the key held down, `0` for none |
+| `keyIndex()` | the same key as `row * 4 + column`, 0–15, or `-1` for none |
 | `ptt()` | PTT line, active high |
 | `monitor()` | monitor line, as read |
 | `powerSwitch()` | power switch line, as read |
@@ -119,17 +121,34 @@ LED and backlight calls go out immediately; they are not buffered.
 the keypad afterwards, which is also what clears the INT line. It reports a
 single key; the matrix cannot tell combinations apart.
 
-### Characters outside ASCII
+Key labels:
 
-`Aselsan4000Glyph` holds the Turkish glyphs that have no ASCII code, for use
-with `setCell()`:
-
-```cpp
-panel.setCell(0, Aselsan4000Glyph::CCedilla);   // Ç
+```
+1 2 3 KeyMenu       KeyMenu  'M'  menu
+4 5 6 KeyEnter      KeyEnter 'E'  enter / select
+7 8 9 KeyScan       KeyScan  'S'  scan
+* 0 # KeyTone       KeyTone  'K'  tone squelch
 ```
 
-Available: `CCedilla`, `GBreve`, `SCedilla`, `IDotted`. Unverified candidates
-for `Ö` and `Ü` are in the header, commented out.
+### Text
+
+`print()` decodes UTF-8 and covers `A–Z`, `a–z` (rendered uppercase), `0–9`,
+space, `- + / \ * = _ ( ) #` and the Turkish letters `Ç Ğ İ Ö Ş Ü`:
+
+```cpp
+panel.print("DÖNDÜ");
+```
+
+Glyphs with no character to type are in `Aselsan4000Glyph`, for `setCell()`:
+
+```cpp
+panel.setCell(7, Aselsan4000Glyph::DataSent);
+```
+
+Available: `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `ArrowUpLeft`,
+`ArrowUpRight`, `ArrowDownLeft`, `ArrowDownRight`, `DataSent`, `DataReceived`,
+plus the Turkish letters by name (`CCedilla`, `GBreve`, `IDotted`,
+`ODiaeresis`, `SCedilla`, `UDiaeresis`).
 
 ## Panel map
 
@@ -174,11 +193,12 @@ input), writing 0 is a strong low.
 
 ## Known gaps
 
-- The individual bits of the battery symbol are not mapped, so `IconBattery`
-  lights the whole byte. Use `setSegment(3, bit, true)` to find them.
 - The monitor icon has not been located on any byte yet.
 - Bit 0 of cells 5–7 drives a row of dash segments whose meaning is unclear.
-- Key numbering follows the matrix, not the printed labels.
+- Battery is a single bit here (byte 3, bit 4); if the symbol has several bars,
+  the rest of that byte holds them. `setSegment(3, bit, true)` finds them.
+- The key labels assume the top row is the one reporting on row bit 0. If your
+  panel comes back upside down, `keyIndex()` still gives the raw position.
 - On the panel used for development, character cell 4 does not render the
   diagonal segments the way the other cells do, although they light on a full
   fill. Digits are correct there; full alphanumerics on that cell would need a

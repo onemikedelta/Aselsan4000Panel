@@ -13,8 +13,10 @@ setByte	KEYWORD2
 setSegment	KEYWORD2
 buffer	KEYWORD2
 glyph	KEYWORD2
+glyphFor	KEYWORD2
 poll	KEYWORD2
 key	KEYWORD2
+keyIndex	KEYWORD2
 ptt	KEYWORD2
 monitor	KEYWORD2
 powerSwitch	KEYWORD2
@@ -29,3 +31,7 @@ IconHighPower	LITERAL1
 IconService	LITERAL1
 LedTx	LITERAL1
 LedRx	LITERAL1
+KeyMenu	LITERAL1
+KeyEnter	LITERAL1
+KeyScan	LITERAL1
+KeyTone	LITERAL1

@@ -31,6 +31,13 @@ public:
 
   enum Led : uint8_t { LedTx = 0, LedRx };
 
+  // Labels key() returns for the four function keys; the rest return their own
+  // character.
+  static const char KeyMenu = 'M';
+  static const char KeyEnter = 'E';
+  static const char KeyScan = 'S';
+  static const char KeyTone = 'K';
+
   Aselsan4000Panel(uint8_t lcdAddress = 0x38, uint8_t lcdSubAddress = 4,
                    uint8_t keypadAddress = 0x21, uint8_t controlAddress = 0x23);
 
@@ -40,7 +47,7 @@ public:
   // --- display ---
   void show();
   void clear();
-  void print(const char *text);
+  void print(const char *text);  // UTF-8, up to 8 characters
   void setChar(uint8_t cell, char c);
   void setCell(uint8_t cell, uint16_t segments);
 
@@ -57,14 +64,16 @@ public:
 
   // 14-segment pattern for a character, 0 if unsupported.
   static uint16_t glyph(char c);
+  static uint16_t glyphFor(uint16_t codepoint);
 
   // --- keypad, inputs, LEDs ---
   // Reads both expanders and re-arms them. Returns true when a key or an input
   // changed since the last call.
   bool poll();
 
-  int8_t key() const { return _key; }  // 0..15, -1 when no key is down
-  bool ptt() const { return _ptt; }    // active high
+  char key() const { return _keyLabel; }   // key label, 0 when none is down
+  int8_t keyIndex() const { return _key; }  // row * 4 + column, -1 for none
+  bool ptt() const { return _ptt; }         // active high
   bool monitor() const { return _monitor; }
   bool powerSwitch() const { return _power; }
 
@@ -85,6 +94,7 @@ private:
   uint8_t _controlAddress;
   uint8_t _ram[RAM_SIZE];
   int8_t _key;
+  char _keyLabel;
   bool _ptt;
   bool _monitor;
   bool _power;
@@ -93,18 +103,26 @@ private:
   bool _backlight;
 };
 
-// Glyphs outside ASCII, for use with setCell().
+// Glyphs that have no ASCII code, for use with setCell(). The Turkish letters
+// are also reachable through print(), which decodes UTF-8.
 namespace Aselsan4000Glyph {
 const uint16_t CCedilla = 0x0718;
 const uint16_t GBreve = 0xA70A;
-const uint16_t SCedilla = 0x219A;
 const uint16_t IDotted = 0x8118;
+const uint16_t ODiaeresis = 0x234A;  // alt 0x870E: full O with the top-centre mark
+const uint16_t SCedilla = 0x219A;
+const uint16_t UDiaeresis = 0x030A;  // alt 0x8706: full U with the top-centre mark
 
-// Unverified candidates for the diaeresis letters; check them on the glass
-// before relying on them.
-// const uint16_t ODiaeresis = 0x870E;   // O plus the upper-centre dot
-// const uint16_t UDiaeresis = 0x8706;   // U plus the upper-centre dot
-// const uint16_t ODiaeresisLow = 0x63C2;  // small o plus both upper diagonals
+const uint16_t ArrowUp = 0x1030;
+const uint16_t ArrowDown = 0xC080;
+const uint16_t ArrowLeft = 0x5040;
+const uint16_t ArrowRight = 0x20A0;
+const uint16_t ArrowUpLeft = 0x9488;
+const uint16_t ArrowUpRight = 0xC02C;
+const uint16_t ArrowDownLeft = 0x4330;
+const uint16_t ArrowDownRight = 0x1192;
+const uint16_t DataSent = ArrowUpRight;
+const uint16_t DataReceived = ArrowDownLeft;
 }
 
 #endif
